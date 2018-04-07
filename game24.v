@@ -1,0 +1,1724 @@
+module game24
+	(
+		CLOCK_50,						//	On Board 50 MHz
+		// Your inputs and outputs here
+      KEY,
+      SW,
+		// The ports below are for the VGA output.  Do not change.
+		HEX0,
+		HEX1,
+		HEX3,
+		HEX4,
+		HEX5,
+		VGA_CLK,   						//	VGA Clock
+		VGA_HS,							//	VGA H_SYNC
+		VGA_VS,							//	VGA V_SYNC
+		VGA_BLANK_N,						//	VGA BLANK
+		VGA_SYNC_N,						//	VGA SYNC
+		VGA_R,   						//	VGA Red[9:0]
+		VGA_G,	 						//	VGA Green[9:0]
+		VGA_B   						//	VGA Blue[9:0]
+	);
+
+	input			CLOCK_50;				//	50 MHz
+	input   [9:0]   SW;
+	input   [3:0]   KEY;
+
+	// Declare your inputs and outputs here
+	// Do not change the following outputs
+	output [6:0]HEX0;
+	output [6:0]HEX1;
+	output [6:0]HEX3;
+	output [6:0]HEX4;
+	output [6:0]HEX5;
+	output			VGA_CLK;   				//	VGA Clock
+	output			VGA_HS;					//	VGA H_SYNC
+	output			VGA_VS;					//	VGA V_SYNC
+	output			VGA_BLANK_N;				//	VGA BLANK
+	output			VGA_SYNC_N;				//	VGA SYNC
+	output	[9:0]	VGA_R;   				//	VGA Red[9:0]
+	output	[9:0]	VGA_G;	 				//	VGA Green[9:0]
+	output	[9:0]	VGA_B;   				//	VGA Blue[9:0]
+	
+	wire resetn;
+	assign resetn = KEY[0];
+	
+	// Create the colour, x, y and writeEn wires that are inputs to the controller.
+	wire [2:0] colour;
+	wire [7:0] x;
+	wire [6:0] y;
+	wire writeEn;
+
+	// Create an Instance of a VGA controller - there can be only one!
+	// Define the number of colours as well as the initial background
+	// image file (.MIF) for the controller.
+	vga_adapter VGA(
+			.resetn(resetn),
+			.clock(CLOCK_50),
+			.colour(colour),
+			.x(x),
+			.y(y),
+			.plot(writeEn),
+			/* Signals for the DAC to drive the monitor. */
+			.VGA_R(VGA_R),
+			.VGA_G(VGA_G),
+			.VGA_B(VGA_B),
+			.VGA_HS(VGA_HS),
+			.VGA_VS(VGA_VS),
+			.VGA_BLANK(VGA_BLANK_N),
+			.VGA_SYNC(VGA_SYNC_N),
+			.VGA_CLK(VGA_CLK));
+		defparam VGA.RESOLUTION = "160x120";
+		defparam VGA.MONOCHROME = "FALSE";
+		defparam VGA.BITS_PER_COLOUR_CHANNEL = 1;
+		defparam VGA.BACKGROUND_IMAGE = "black.mif";
+			
+	// Put your code here. Your code should produce signals x,y,colour and writeEn/plot
+	// for the VGA controller, in addition to any other functionality your design may require.
+	
+		wire d, g0, g1, g2, g3, g4, g5, s, count;
+		wire calculate, check, game_over;
+		wire [3:0] r;
+		wire [3:0] p;
+		wire [7:0] save;
+    
+    // Instansiate datapath
+	// datapath d0(...);
+	datapath d0(~KEY[1], s, calculate, check, SW[7:4], SW[3:0], CLOCK_50, KEY[0], x, y, colour, d, save, g0, g1, g2, g3, game_over, r, p);
+
+
+    // Instansiate FSM control
+    // control c0(...);
+	 control c0(game_over, d, ~KEY[1], CLOCK_50, KEY[0], writeEn, g0, g1, g2, g3, g4, g5, s, calculate, check);
+	 
+	 hex_decoder h1(r, HEX0);
+	 hex_decoder h34(4'd8, HEX1);
+	 hex_decoder h3(p, HEX3);
+	 hex_decoder h2(save[3:0], HEX4);
+	 hex_decoder h4(save[7:4], HEX5);
+	 
+    
+endmodule
+
+
+//module maincontrol(d_s, clock, reset_n, KEY, plot, new);
+
+module control(game_over, d_s, get, clock, reset_n, plot, go0, go1, go2, go3, go4, go5, stop_draw, start_calculate, start_check);
+	input game_over, d_s, get;
+	input clock, reset_n;
+
+	output reg plot;
+	output reg go0, go1, go2, go3, go4, go5, stop_draw, start_calculate, start_check;
+	
+	reg [3:0] current_state;
+	reg [3:0] next_state;
+	
+	
+	localparam	S_DRAW_C1       = 5'd0,
+			S_DRAW_C2	= 5'd1,
+			S_DRAW_C3	= 5'd2,
+			S_DRAW_C4	= 5'd3,
+			WAIT_USER_1	= 5'd4,
+			Calculate1	= 5'd5,
+			Display_1	= 5'd6,
+			WAIT_USER_2 	= 5'd7,
+			Calculate2	= 5'd8,
+			Display_2	= 5'd9,
+			WAIT_USER_3 	= 5'd10,
+			Calculate3	= 5'd11,
+			Display_3	= 5'd12,
+			Check		= 5'd13,
+			S_DRAW_WAIT     = 5'd14;
+			
+					 
+		
+	always@(*)
+		begin: state_table 
+            case (current_state)
+						S_DRAW_C1: next_state = d_s ? S_DRAW_C2 : S_DRAW_C1;
+						S_DRAW_C2: next_state = d_s ? S_DRAW_C3 : S_DRAW_C2;
+						S_DRAW_C3: next_state = d_s ? S_DRAW_C4 : S_DRAW_C3;
+						S_DRAW_C4: next_state = d_s ? WAIT_USER_1 : S_DRAW_C4;
+//						TIMER_DRAW: next_state = d_s ? WAIT_USER_1 : TIMER_DRAW;
+						WAIT_USER_1: begin
+							if(game_over == 1'b0)
+								next_state = get ? Calculate1 : WAIT_USER_1;
+							else
+								next_state = S_DRAW_C1;
+							end
+						Calculate1: next_state = Display_1;
+						Display_1: next_state = d_s ? WAIT_USER_2 : Display_1;
+            		WAIT_USER_2: begin
+							if(game_over == 1'b0)
+								next_state = get ? Calculate2 : WAIT_USER_2;
+							else
+								next_state = S_DRAW_C1;
+							end
+						Calculate2: next_state = Display_2;
+						Display_2: next_state =  d_s ? WAIT_USER_3 : Display_2;
+						WAIT_USER_3: begin
+							if(game_over == 1'b0)
+								next_state = get ? Calculate3 : WAIT_USER_3;
+							else
+								next_state = S_DRAW_C1;
+							end
+						Calculate3: next_state = Display_3;
+						Display_3: next_state = d_s ? Check : Display_3;
+						Check: next_state = S_DRAW_WAIT;
+						S_DRAW_WAIT: next_state = reset_n ? S_DRAW_WAIT : S_DRAW_C1;
+            default: 		  next_state = S_DRAW_C1;
+        endcase
+    end 
+		  
+	always@(*)
+		begin: enable_signals
+        // By default make all our signals 0
+		plot = 1'b0;
+		go0 = 1'b0;
+		go1 = 1'b0;
+		go2 = 1'b0;
+		go3 = 1'b0;
+		go4 = 1'b0;
+		go5 = 1'b0;
+		start_calculate = 1'b0;
+		start_check = 1'b0;
+		stop_draw = 1'b0;
+		  
+		case(current_state)
+			S_DRAW_C1:begin
+				plot = 1'b1;
+				go0 = 1'b1;
+				end
+			S_DRAW_C2:begin
+				plot = 1'b1;
+				go1 = 1'b1;
+				end
+			S_DRAW_C3:begin
+				plot = 1'b1;
+				go2 = 1'b1;
+				end
+			S_DRAW_C4:begin
+				plot = 1'b1;
+				go3 = 1'b1;
+				end
+//			TIMER_DRAW: begin
+//				plot = 1'b1;
+//				timer_draw = 1'b1;
+//				end
+			WAIT_USER_1: begin
+				stop_draw = 1'b1;
+				end
+			Calculate1: begin
+				start_calculate = 1'b1;
+				end
+			Display_1: begin
+				stop_draw = 1'b0;
+				plot = 1'b1;
+				go4 = 1'b1;
+				go5 = 1'b1;
+				end
+			WAIT_USER_2: begin
+				stop_draw = 1'b1;
+				end
+         Calculate2: begin
+				start_calculate = 1'b1;
+				end
+			Display_2: begin
+				stop_draw = 1'b0;
+				plot = 1'b1;
+				go4 = 1'b1;
+				go5 = 1'b1;
+				end
+			WAIT_USER_3: begin
+				stop_draw = 1'b1;
+				end
+         Calculate3: begin
+				start_calculate = 1'b1;
+				end
+			Display_3: begin
+				stop_draw = 1'b0;
+				plot = 1'b1;
+				go4 = 1'b1;
+				go5 = 1'b1;
+				end
+			Check: begin
+				stop_draw = 1'b1;
+				start_check = 1'b1;
+				end
+			S_DRAW_WAIT:begin		
+				plot = 1'b0;
+				end
+		endcase
+	end
+		
+	always@(posedge clock)
+		begin: state_FFs
+			if(!reset_n)
+				current_state <= S_DRAW_C1;
+			else
+				current_state <= next_state;
+		end 
+endmodule
+ 
+
+module datapath(e, stop_draw, start_calculate, start_check, data_in, operation, clk, reset, x_out, y_out, color_out, d_signal, save, go0, go1, go2, go3, go4, go5, game_over, r, points);
+		input e;
+		input clk;
+		input reset;
+		input [3:0] data_in;
+		input [3:0] operation;
+		input go0, go1, go2, go3, go4, go5, stop_draw;
+		input start_calculate;
+		input start_check;
+		
+		output game_over;
+		output reg [7:0] save;
+		output reg [3:0] r;
+		output reg [7:0] x_out;
+		output reg [6:0] y_out;
+		output reg [2:0] color_out;
+		output d_signal;
+		output reg [3:0] points;
+		
+		wire[7:0] xpos_1, xpos_2, xpos_3, xpos_4, xpos_5, xpos_6;
+		wire[6:0] ypos_1, ypos_2, ypos_3, ypos_4, ypos_5, ypos_6;
+		assign xpos_1 = 8'd20;
+		assign ypos_1 = 7'd40;
+		assign xpos_2 = 7'd52;
+		assign ypos_2 = 7'd40;
+		assign xpos_3 = 7'd84;
+		assign ypos_3 = 7'd40;
+		assign xpos_4 = 7'd116;
+		assign ypos_4 = 7'd40;
+		assign xpos_5 = 7'd52;
+		assign ypos_5 = 7'd80;
+		assign xpos_6 = 7'd84;
+		assign ypos_6 = 7'd80;
+
+		assign xpos_7 = 8'd0;
+		assign ypos_7 = 8'd100;
+
+		 
+		wire [9:0] Current_Address;
+		wire [7:0] c1;
+		wire [6:0] c2;
+		wire [7:0] cccc;
+
+		wire new1;
+		
+		memoryCounter count0(
+			.stop_draw(stop_draw),
+			.x_count(c1),
+			.y_count(c2),
+			.clock(clk),
+			.resetn(reset));
+
+		colorCounter c5(stop_draw, Current_Address, clk, d_signal, reset);
+
+//		time_draw ccccc(d_signal, clk, cccc, reset);
+		
+		rate_divider r01(enable, clk, reset);
+		
+		time_counter t01(enable, clk, game_over, reset);
+
+
+//	wire enable;
+//	
+//	wire [1:0] tw;
+//	wire finish, ok;
+//	
+//	always @(*)
+//	begin
+//	
+//		if (start_count)begin
+//			if (enable) 
+//				begin
+//				ok <= 1'b1;
+//				counter4 ccc(clk, reset, tw, finish);
+//				end
+//			if (ok) begin
+//				if (~finish)
+//					begin
+//					x_out <= xpos_7 - tw;
+//					y_out <= ypos_7;
+//					color_out = 3'b000;
+//					end
+//				end
+//			else
+//				 ok = 1'b0;
+//			end
+//	end
+		
+		wire[2:0] ram1out;
+		wire[2:0] ram2out;
+		wire[2:0] ram3out;
+		wire[2:0] ram4out;
+		wire[2:0] ram5out;
+		wire[2:0] ram6out;
+		wire[2:0] ram7out;
+		wire[2:0] ram8out;
+		wire[2:0] ram9out;
+		wire[2:0] ram10out;
+
+		wire[2:0] ramhex0out;
+		wire[2:0] ramhex1out;
+		wire[2:0] ramhex2out;
+		wire[2:0] ramhex3out;
+		wire[2:0] ramhex4out;
+		wire[2:0] ramhex5out;
+		wire[2:0] ramhex6out;
+		wire[2:0] ramhex7out;
+		wire[2:0] ramhex8out;
+		wire[2:0] ramhex9out;
+		 
+		// RAM file modules
+		ram_num0 rr0(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex0out));
+			
+		ram_num1 rr1(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex1out));
+			
+		ram_num2 rr2(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex2out));
+			
+		ram_num3 rr3(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex3out));
+			
+		ram_num4 rr4(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex4out));
+			
+		ram_num5 rr5(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex5out));
+			
+		ram_num6 rr6(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex6out));
+			
+		ram_num7 rr7(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex7out));
+			
+		ram_num8 rr8(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex8out));
+			
+		ram_num9 rr9(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ramhex9out));
+			
+		ram1 r1(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram1out));
+			
+		ram2 r2(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram2out));
+	
+		ram3 r3(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram3out));	
+		
+		ram4 r4(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram4out));
+			
+		ram5 r5(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram5out));
+			
+		ram6 r6(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram6out));
+		
+		ram7 r7(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram7out));
+		
+		ram8 r8(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram8out));		
+		
+		ram9 r9(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram9out));
+		
+		ram10 r10(
+			.address(Current_Address),
+			.clock(clk),
+			.data(0),
+			.wren(0),
+			.q(ram10out));
+			
+			
+		wire [3:0] w1;
+		wire [3:0] w2;
+		wire [3:0] w3;
+		wire [3:0] w4;
+		reg  [2:0] colour1;
+		reg  [2:0] colour2; 
+		reg  [2:0] colour3; 
+		reg  [2:0] colour4;
+		
+		randnum_generator  rrr1(reset, 1'b0, w1, w2, w3, w4);
+		
+		always @(*)
+		begin
+			case(w1)
+				4'd1: colour1 = ram1out;
+				4'd2: colour1 = ram2out;
+				4'd3: colour1 = ram3out;
+				4'd4: colour1 = ram4out;
+				4'd5: colour1 = ram5out;
+				4'd6: colour1 = ram6out;
+				4'd7: colour1 = ram7out;
+				4'd8: colour1 = ram8out;
+				4'd9: colour1 = ram9out;
+				4'd10: colour1 = ram10out;
+			endcase
+		end
+		
+		
+		always @(*)
+		begin
+			case(w2)
+				4'd1: colour2 = ram1out;
+				4'd2: colour2 = ram2out;
+				4'd3: colour2 = ram3out;
+				4'd4: colour2 = ram4out;
+				4'd5: colour2 = ram5out;
+				4'd6: colour2 = ram6out;
+				4'd7: colour2 = ram7out;
+				4'd8: colour2 = ram8out;
+				4'd9: colour2 = ram9out;
+				4'd10: colour2 = ram10out;
+			endcase
+		end
+		
+		
+		always @(*)
+		begin
+			case(w3)
+				4'd1: colour3 = ram1out;
+				4'd2: colour3 = ram2out;
+				4'd3: colour3 = ram3out;
+				4'd4: colour3 = ram4out;
+				4'd5: colour3 = ram5out;
+				4'd6: colour3 = ram6out;
+				4'd7: colour3 = ram7out;
+				4'd8: colour3 = ram8out;
+				4'd9: colour3 = ram9out;
+				4'd10: colour3 = ram10out;
+			endcase
+		end
+
+	reg [3:0] yes;
+	reg [3:0] right;
+	reg [6:0] save1;
+	
+	
+	operate o1 (yes, right, w1, w2, w3, w4, save1);
+	
+	always @(posedge clk)
+		if(e == 1'b1)
+			begin
+				if (start_calculate)
+				begin
+				yes = data_in;
+				right = operation;
+				save = save1;
+				end
+			end
+
+		/////////////////////////////////////////////////////////
+		reg [2:0] colour5;
+		reg [2:0] colour6;
+
+
+		always @(*)
+		begin
+			case(save)
+				7'd0:
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex0out;
+					end
+				7'd1: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex1out;
+					end
+				7'd2: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex2out;
+					end
+				7'd3: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex3out;
+					end
+				7'd4: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex4out;
+					end
+				7'd5: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex5out;
+					end
+				7'd6: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex6out;
+					end
+				7'd7: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex7out;
+					end
+				7'd8: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex8out;
+					end
+				7'd9: 
+					begin
+						colour5 = ramhex0out;
+						colour6 = ramhex9out;
+					end
+				7'd10: 
+					begin
+					
+						colour5 = ramhex1out;
+						colour6 = ramhex0out;
+					end
+				7'd11: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex1out;
+					end
+				7'd12: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex2out;
+					end
+				7'd13: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex3out;
+					end
+				7'd14: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex4out;
+					end
+				7'd15: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex5out;
+					end
+				7'd16: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex6out;
+					end
+				7'd17: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex7out;
+					end
+				7'd18: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex8out;
+					end
+				7'd19: 
+					begin
+						colour5 = ramhex1out;
+						colour6 = ramhex9out;
+					end
+				7'd20: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex0out;
+					end
+				7'd21: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex1out;
+					end
+				7'd22: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex2out;
+					end
+				7'd23: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex3out;
+					end
+				7'd24: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex4out;
+					end
+				7'd25: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex5out;
+					end
+				7'd26: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex6out;
+					end
+				7'd27: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex7out;
+					end
+				7'd28: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex8out;
+					end
+				7'd29: 
+					begin
+						colour5 = ramhex2out;
+						colour6 = ramhex9out;
+					end
+				7'd30: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex0out;
+					end
+				7'd31: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex1out;
+					end
+				7'd32: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex2out;
+					end
+				7'd33: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex3out;
+					end
+				7'd34: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex4out;
+					end
+				7'd35: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex5out;
+					end
+				7'd36: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex6out;
+					end
+				7'd37: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex7out;
+					end
+				7'd38: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex8out;
+					end
+				7'd39: 
+					begin
+						colour5 = ramhex3out;
+						colour6 = ramhex9out;
+					end
+				7'd40: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex0out;
+					end
+				7'd41: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex1out;
+					end
+				7'd42: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex2out;
+					end
+				7'd43: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex3out;
+					end
+				7'd44: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex4out;
+					end
+				7'd45: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex5out;
+					end
+				7'd46: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex6out;
+					end
+				7'd47: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex7out;
+					end
+				7'd48: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex8out;
+					end
+				7'd49: 
+					begin
+						colour5 = ramhex4out;
+						colour6 = ramhex9out;
+					end
+				7'd50: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex0out;
+					end
+				7'd51: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex1out;
+					end
+				7'd52: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex2out;
+					end
+				7'd53: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex3out;
+					end
+				7'd54: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex4out;
+					end
+				7'd55: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex5out;
+					end
+				7'd56: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex6out;
+					end
+				7'd57: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex7out;
+					end
+				7'd58: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex8out;
+					end
+				7'd59: 
+					begin
+						colour5 = ramhex5out;
+						colour6 = ramhex9out;
+					end
+				7'd60: 
+					begin
+					
+						colour5 = ramhex6out;
+						colour6 = ramhex0out;
+					end
+				7'd61: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex1out;
+					end
+				7'd62: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex2out;
+					end
+				7'd63: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex3out;
+					end
+				7'd64: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex4out;
+					end
+				7'd65: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex5out;
+					end
+				7'd66: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex6out;
+					end
+				7'd67: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex7out;
+					end
+				7'd68: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex8out;
+					end
+				7'd69: 
+					begin
+						colour5 = ramhex6out;
+						colour6 = ramhex9out;
+					end
+				7'd70: 
+					begin
+					
+						colour5 = ramhex7out;
+						colour6 = ramhex0out;
+					end
+				7'd71: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex1out;
+					end
+				7'd72: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex2out;
+					end
+				7'd73: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex3out;
+					end
+				7'd74: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex4out;
+					end
+				7'd75: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex5out;
+					end
+				7'd76: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex6out;
+					end
+				7'd77: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex7out;
+					end
+				7'd78: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex8out;
+					end
+				7'd79: 
+					begin
+						colour5 = ramhex7out;
+						colour6 = ramhex9out;
+					end
+				7'd80: 
+					begin
+					
+						colour5 = ramhex8out;
+						colour6 = ramhex0out;
+					end
+				7'd81: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex1out;
+					end
+				7'd82: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex2out;
+					end
+				7'd83: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex3out;
+					end
+				7'd84: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex4out;
+					end
+				7'd85: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex5out;
+					end
+				7'd86: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex6out;
+					end
+				7'd87: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex7out;
+					end
+				7'd88: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex8out;
+					end
+				7'd89: 
+					begin
+						colour5 = ramhex8out;
+						colour6 = ramhex9out;
+					end
+				7'd90: 
+					begin
+					
+						colour5 = ramhex9out;
+						colour6 = ramhex0out;
+					end
+				7'd91: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex1out;
+					end
+				7'd92: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex2out;
+					end
+				7'd93: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex3out;
+					end
+				7'd94: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex4out;
+					end
+				7'd95: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex5out;
+					end
+				7'd96: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex6out;
+					end
+				7'd97: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex7out;
+					end
+				7'd98: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex8out;
+					end
+				7'd99: 
+					begin
+						colour5 = ramhex9out;
+						colour6 = ramhex9out;
+					end
+			endcase
+		end	
+		
+		
+		always @(*)
+		begin
+			case(w4)
+				4'd1: colour4 = ram1out;
+				4'd2: colour4 = ram2out;
+				4'd3: colour4 = ram3out;
+				4'd4: colour4 = ram4out;
+				4'd5: colour4 = ram5out;
+				4'd6: colour4 = ram6out;
+				4'd7: colour4 = ram7out;
+				4'd8: colour4 = ram8out;
+				4'd9: colour4 = ram9out;
+				4'd10: colour4 = ram10out;
+			endcase
+		end
+		
+		
+		assign g0 = 1'b1;
+		
+		
+		always @(*)
+		begin
+			if (go0)
+			begin
+				x_out = xpos_1 + c1;
+				y_out = ypos_1 + c2;
+				color_out = colour1;
+			end
+			
+			else if (go1)
+			begin
+				x_out = xpos_2 + c1;
+				y_out = ypos_2 + c2;
+				color_out = colour2;
+			end
+
+			else if (go2)
+			begin
+				x_out = xpos_3 + c1;
+				y_out = ypos_3 + c2;
+				color_out = colour3;
+			end
+
+			else if (go3)
+			begin
+				x_out = xpos_4 + c1;
+				y_out = ypos_4 + c2;
+				color_out = colour4;
+			end
+//			else if (go4)
+//			begin
+//				x_out = xpos_5 + c1;
+//				y_out = ypos_5 + c2;
+//				color_out = colour5;
+//			end
+//			
+//			else if (go5)
+//			begin
+//				x_out = xpos_6 + c1;
+//				y_out = ypos_6 + c2;
+//				color_out = colour6;
+//			end
+
+//			else if (timer_draw)
+//			begin
+//				x_out = xpos_7 + cccc;
+//				y_out = ypos_7;
+//				color_out = 3'b100;
+//			end
+		end
+	
+	always @(*)
+	begin
+
+	if (start_check)
+		begin
+		if (save == 5'd24)begin
+			if (points < 4'hF) begin
+				points = points + 1'b1;
+				end
+			else if (points == 4'hF) begin
+				points = 1'b0;
+			end
+			r = 4'h5;
+			end
+		else
+			r = 4'hF;
+		end
+	end
+		
+endmodule
+
+//module timeCounter(q, clock, done_signal, resetn);
+//		input clock, resetm;
+//		output reg [7:0]q;
+//		output reg done_signal;
+//		
+//		always @(posedge clock)
+//		begin
+//			if (resetn == 0)
+//			begin
+//				done_signal <= 1'b0;
+//				q <= 8'd0;
+//			end
+//		else
+//			begin
+//			if (q < 8'd120)
+//			begin
+//				q <= q + 1'b1;
+//			end
+//			else if (q == 8'd120)
+//			begin
+//				q <= 1'b0;
+//				done_signal <= 1'b1;
+//			end
+//		end
+//endmodule
+
+
+module colorCounter(stop_draw, q, clock, done_signal, resetn);
+		input stop_draw, clock, resetn;
+		output reg [9:0] q;
+		output reg done_signal;
+
+		always @(posedge clock)
+		begin
+			if (resetn == 0)
+			begin
+				done_signal <= 1'b0;
+				q <= 10'd0;
+			end
+		else
+			begin
+			if (q < 10'd575 )
+			begin
+				q <= q + 1'b1;
+				done_signal <= 1'b0;
+			end
+			else if (q == 10'd575)
+			begin
+				if (~stop_draw) 
+				begin
+					q <= 1'b0;
+				end
+				done_signal <= 1'b1;
+			end
+			end
+		end
+		
+endmodule
+
+
+module memoryCounter(stop_draw, x_count, y_count, clock, resetn);
+		input stop_draw;
+		output reg [7:0] x_count = 8'd0;
+		output reg [6:0] y_count = 7'd0;
+		input clock;
+		input resetn;
+		
+		
+		always @(posedge clock)
+			begin
+				if (resetn == 0)
+					begin
+						x_count <= 8'd0;
+						y_count <= 7'd0;
+					end
+				else 
+					begin
+						if (x_count < 8'd24)					// Counts through x coords
+						begin
+							if (x_count == 8'd23)
+									begin
+									x_count <= 8'd0;
+									if (y_count < 7'd23)
+										y_count <= y_count + 1'b1;
+									end
+							else
+									x_count <= x_count + 1'b1;
+						end
+						if (x_count == 8'd23 & y_count == 7'd23 & ~stop_draw)
+							begin
+							x_count <= 0;
+							y_count <= 0;
+							end
+					end
+			end
+endmodule
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+module randnum_generator(KEY, SW, w1, w2, w3, w4);
+		input [3:0] KEY;
+		input [9:0] SW;
+		output [6:0] w1;
+		output [6:0] w2;
+		output [6:0] w3;
+		output [6:0] w4;
+		
+		wire [9:0] num0;
+		wire [9:0] num1;
+		
+		wire [19:0] total_num1;
+		wire [19:0] total_num2;
+		
+		lfsr l0(
+			.out(num0), 
+			.clk(KEY[0]), 
+			.rst(SW[0]));
+			
+		lfsr l1(
+			.out(num1), 
+			.clk(KEY[0]), 
+			.rst(SW[0]));
+			
+		assign total_num1 = {num0, num1};
+		assign total_num2 = {num1, num0};
+		
+		
+		decoder d1(total_num1[3:0], w1);
+		decoder d2(total_num1[18:15], w2);
+		decoder d3(total_num1[11:8], w3);
+		decoder d4(total_num1[6:3], w4);
+
+	
+endmodule
+
+module lfsr (out, clk, rst);
+		output reg [9:0] out = 10'b0;
+		input clk, rst;
+
+		wire feedback;
+
+		assign feedback = ~(out[9] ^ out[8] ^ out[7] ^ out[6] ^ out[5] ^ out[4] ^ out[3] ^ out[2]);
+
+		always @(posedge clk, posedge rst)
+			begin
+			if (rst)
+			  out = 10'b0;
+			else
+			  out = {out[8:0], feedback};
+			end
+endmodule
+
+module operate(
+	input [3:0] data_in, //4 bit number represent the user selection
+	input [3:0] operation,
+	input save,
+	input a_in, 
+	input b_in,
+	input c_in,
+	input d_in, //current number
+	output reg [7:0] out
+	);
+
+    wire co1, co2;
+	 reg [1:0] c3;
+
+    always @(*)
+    begin
+        case (operation)
+            4'b1000: begin
+                   c3 = 2'd1;
+               end
+            4'b0100: begin
+                   c3 = 2'd2;
+               end
+	    4'b0010: begin
+                   c3 = 2'd3;
+               end
+	    4'b0001: begin
+                   c3 = 2'd4;
+               end
+        endcase
+    end
+
+
+    always @(*)
+    begin
+	 case(data_in)
+		4'b1000: begin
+			case(c3)
+				2'd0: out = a_in + save;
+				2'd1: begin
+				if (a_in >= save)
+					out = a_in - save;
+				else
+					out = save - a_in;
+				end
+				2'd2: out = a_in * save;
+				2'd3: begin
+				if (a_in >= save)
+					out = a_in / save;
+				else
+					out = save / a_in;
+				end
+				endcase
+			end
+		4'b0100: begin
+			case(c3)
+				2'd0: out = b_in + save;
+				2'd1: begin
+				if (b_in >= save)
+					out = b_in - save;
+				else
+					out = save - b_in;
+				end
+				2'd2: out = b_in * save;
+				2'd3: begin
+				if (a_in >= save)
+					out = b_in / save;
+				else
+					out = save / b_in;
+				end
+				endcase
+			end
+		4'b1000: begin
+			case(c3)
+				2'd0: out = a_in + save;
+				2'd1: begin
+				if (a_in >= save)
+					out = a_in - save;
+				else
+					out = save - a_in;
+				end
+				2'd2: out = a_in * save;
+				2'd3: begin
+				if (a_in >= save)
+					out = a_in / save;
+				else
+					out = save / a_in;
+				end
+				endcase
+			end
+		4'b0010: begin
+			case(c3)
+				2'd0: out = c_in + save;
+				2'd1: begin
+				if (c_in >= save)
+					out = c_in - save;
+				else
+					out = save - c_in;
+				end
+				2'd2: out = c_in * save;
+				2'd3: begin
+				if (c_in >= save)
+					out = c_in / save;
+				else
+					out = save / c_in;
+				end
+				endcase
+			end
+		4'b0001: begin
+			case(c3)
+				2'd0: out = d_in + save;
+				2'd1: begin
+				if (d_in >= save)
+					out = d_in - save;
+				else
+					out = save - c_in;
+				end
+				2'd2: out = d_in * save;
+				2'd3: begin
+				if (d_in >= save)
+					out = d_in / save;
+				else
+					out = save / d_in;
+				end
+				endcase
+			end
+		4'b1010: begin
+			case(c3)
+				2'd0: out = a_in + c_in;
+				2'd1:  begin
+				if (a_in >= c_in)
+					out = a_in - c_in;
+				else
+					out = c_in - a_in;
+				end
+				2'd2: out = a_in * c_in;
+				2'd3: begin
+					if (a_in >= c_in)
+						out = a_in / c_in;
+					else
+						out = c_in / a_in;
+				end
+				endcase
+			end
+		4'b1001: begin
+			case(c3)
+				2'd0: out = a_in + d_in;
+				2'd1: begin
+				if (a_in >= d_in)
+					out = a_in - d_in;
+				else
+					out = d_in - a_in;
+				end
+				2'd2: out = a_in * d_in;
+				2'd3: begin
+					if (a_in >= d_in)
+						out = a_in / d_in;
+					else
+						out = d_in / a_in;
+				end
+				endcase
+			end
+		4'b0110: begin
+			case(c3)
+				2'd0: out = b_in + c_in;
+				2'd1: begin
+				if (b_in >= c_in)
+					out = b_in - c_in;
+				else
+					out = c_in - b_in;
+				end
+				2'd2: out = b_in * c_in;
+				2'd3: begin
+					if (b_in >= c_in)
+						out = b_in / c_in;
+					else
+						out = c_in / b_in;
+				end
+				endcase
+			end
+		4'b0101: begin
+			case(c3)
+				2'd0: out = b_in + d_in;
+				2'd1: begin
+				if (b_in >= d_in)
+					out = b_in - d_in;
+				else
+					out = d_in - b_in;
+				end
+				2'd2: out = b_in * d_in;
+				2'd3: begin
+					if (b_in >= d_in)
+						out = b_in / d_in;
+					else
+						out = d_in / b_in;
+				end
+				endcase
+			end
+		4'b0011: begin
+			case(c3)
+				2'd0: out = d_in + c_in;
+				2'd1: begin
+				if (c_in >= d_in)
+					out = c_in - d_in;
+				else
+					out = d_in - c_in;
+				end
+				2'd2: out = c_in * d_in;
+				2'd3: begin
+					if (c_in >= d_in)
+						out = c_in / d_in;
+					else
+						out = d_in / c_in;
+				end
+				endcase
+			end
+			endcase
+    end
+endmodule
+
+module rate_divider(enable, clock, reset);
+	output enable;
+	input clock;
+	input reset;
+	
+	reg [23:0] q = 24'b0;
+	
+	always @(posedge clock)
+		begin
+			if (reset == 0)
+				q <= 0;
+			else if (q == 1'b1)
+				q <= 24'd5000000;  
+			else
+				q <= q - 1;
+		end
+		
+	assign enable = (q == 24'b0) ? 1 : 0;
+endmodule
+
+
+module decoder(in, out);
+		input [3:0] in;
+		output reg [3:0] out;
+	
+	    always @(*)
+        case (in)
+            4'h0: out = 4'd6;
+            4'h1: out = 4'd1;
+            4'h2: out = 4'd2;
+            4'h3: out = 4'd3;
+            4'h4: out = 4'd4;
+            4'h5: out = 4'd5;
+            4'h6: out = 4'd6;
+            4'h7: out = 4'd7;
+            4'h8: out = 4'd8;
+            4'h9: out = 4'd9;
+            4'hA: out = 4'd10;
+            4'hB: out = 4'd1;
+            4'hC: out = 4'd2;
+            4'hD: out = 4'd3;
+            4'hE: out = 4'd4;
+            4'hF: out = 4'd5;   
+            default: out = 4'd8;
+        endcase
+endmodule
+
+module hex_decoder(hex_digit, segments);
+    input [3:0] hex_digit;
+    output reg [6:0] segments;
+   
+    always @(*)
+        case (hex_digit)
+            4'h0: segments = 7'b100_0000;
+            4'h1: segments = 7'b111_1001;
+            4'h2: segments = 7'b010_0100;
+            4'h3: segments = 7'b011_0000;
+            4'h4: segments = 7'b001_1001;
+            4'h5: segments = 7'b001_0010;
+            4'h6: segments = 7'b000_0010;
+            4'h7: segments = 7'b111_1000;
+            4'h8: segments = 7'b000_0000;
+            4'h9: segments = 7'b001_1000;
+            4'hA: segments = 7'b000_1000;
+            4'hB: segments = 7'b000_0011;
+            4'hC: segments = 7'b100_0110;
+            4'hD: segments = 7'b010_0001;
+            4'hE: segments = 7'b000_0110;
+            4'hF: segments = 7'b000_1110;   
+            default: segments = 7'h7f;
+        endcase
+endmodule
+
+//module counter4 (clock, resetn, q, finish);
+//	input clock, resetn;
+//	output reg [1:0] q;
+//	output reg done_signal;
+//
+//	always @(posedge clock)
+//		begin
+//			if (resetn == 0)
+//			begin
+//				q <= 0;
+//			end
+//			else if (q < 2'd4)
+//				q <= q + 1;
+//			else if (q == 2'd4)
+//				finish <= 1'b1;
+//		end
+//endmodule
+
+//module time_draw (done_signal, clock, q, resetn);
+//		input enable, clock, resetn;
+//		output reg [7:0] q;
+//
+//		always @(posedge clock)
+//		begin
+//			if (resetn == 0)
+//			begin
+//				q <= 8'b0;
+//			end
+//			else
+//			begin
+//				if (q < 8'd120)
+//				begin
+//				q <= q + 1'b1;
+//				end
+//				else if (q == 8'd120)
+//				begin
+//				done_signal <= 1'd1;
+//				end
+//			end
+//		end
+//		
+//endmodule
+
+module time_counter (enable, clock, game_over, resetn);
+		input enable, clock, resetn;
+		output reg game_over;
+
+		reg [4:0] s;
+
+		always @(posedge clock)
+		begin
+			if (resetn == 0)
+			begin
+				s <= 1'b0;
+			end
+			else
+			begin
+				if (s < 5'd30 & enable == 1'b1)
+				begin
+				s <= s + 1'b1;
+				end
+				else if (s == 5'd30)
+				begin
+				game_over = 1'b1;
+				end
+			end
+		end
+		
+endmodule
+

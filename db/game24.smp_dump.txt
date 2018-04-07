@@ -1,0 +1,18 @@
+
+State Machine - |game24|control:c0|current_state
+Name current_state.S_DRAW_WAIT current_state.Check current_state.Display_3 current_state.Calculate3 current_state.WAIT_USER_3 current_state.Display_2 current_state.Calculate2 current_state.WAIT_USER_2 current_state.Display_1 current_state.Calculate1 current_state.WAIT_USER_1 current_state.S_DRAW_C4 current_state.S_DRAW_C3 current_state.S_DRAW_C2 current_state.S_DRAW_C1 
+current_state.S_DRAW_C1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
+current_state.S_DRAW_C2 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 
+current_state.S_DRAW_C3 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 
+current_state.S_DRAW_C4 0 0 0 0 0 0 0 0 0 0 0 1 0 0 1 
+current_state.WAIT_USER_1 0 0 0 0 0 0 0 0 0 0 1 0 0 0 1 
+current_state.Calculate1 0 0 0 0 0 0 0 0 0 1 0 0 0 0 1 
+current_state.Display_1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 
+current_state.WAIT_USER_2 0 0 0 0 0 0 0 1 0 0 0 0 0 0 1 
+current_state.Calculate2 0 0 0 0 0 0 1 0 0 0 0 0 0 0 1 
+current_state.Display_2 0 0 0 0 0 1 0 0 0 0 0 0 0 0 1 
+current_state.WAIT_USER_3 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 
+current_state.Calculate3 0 0 0 1 0 0 0 0 0 0 0 0 0 0 1 
+current_state.Display_3 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 
+current_state.Check 0 1 0 0 0 0 0 0 0 0 0 0 0 0 1 
+current_state.S_DRAW_WAIT 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 
